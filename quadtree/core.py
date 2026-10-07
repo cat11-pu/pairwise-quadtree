@@ -51,17 +51,17 @@ class Bounds(object):
     def intersects(self, other):
         """Whether the rectangle shares at least one point with other."""
         return not (
-            other.x1 <= self.x
-            or self.x1 <= other.x
-            or other.y1 <= self.y
-            or self.y1 <= other.y
+            other.x1 < self.x
+            or self.x1 < other.x
+            or other.y1 < self.y
+            or self.y1 < other.y
         )
 
     def quadrant_of(self, point):
         """Index of the child quadrant that owns point."""
         right = point[0] >= self.x + self.width / 2.0
         upper = point[1] >= self.y + self.height / 2.0
-        return (int(right) << 1) | int(upper)
+        return (int(upper) << 1) | int(right)
 
     def child_bounds(self, index):
         """The region of the child quadrant at index."""
@@ -150,7 +150,7 @@ class Quadtree(object):
     def count(self, point):
         """How many copies of point are stored."""
         leaf = self.locate(point)
-        return len(leaf.points)
+        return leaf.points.count(point)
 
     def locate(self, point):
         """The leaf node that owns point."""
@@ -200,9 +200,8 @@ class Quadtree(object):
     def _insert(self, node, point):
         while node.children is not None:
             node = node.children[node.bounds.quadrant_of(point)]
-        if point not in node.points:
-            node.points.append(point)
-        if len(node.points) >= self.capacity and node.depth <= self.max_depth_limit:
+        node.points.append(point)
+        if len(node.points) > self.capacity and node.depth < self.max_depth_limit:
             self._split(node)
 
     def _split(self, node):
@@ -216,6 +215,12 @@ class Quadtree(object):
         for point in points:
             child = node.children[node.bounds.quadrant_of(point)]
             child.points.append(point)
+        for child in node.children:
+            if (
+                len(child.points) > self.capacity
+                and child.depth < self.max_depth_limit
+            ):
+                self._split(child)
 
     def _descend(self, point):
         """The chain of nodes from the root down to the leaf that owns point."""
@@ -237,7 +242,7 @@ class Quadtree(object):
 
     def _collapse(self, parents):
         """Merge the children of the point that was removed back into it."""
-        for node in parents:
+        for node in reversed(parents):
             if any(child.children is not None for child in node.children):
                 continue
             total = 0
